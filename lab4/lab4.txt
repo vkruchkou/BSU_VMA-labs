@@ -1,0 +1,257 @@
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Formatter;
+import java.util.Random;
+
+public class Lab {
+    public static void main(String[] args) {
+        Program pr = new Program();
+        try {
+            pr.base();
+        }catch (Error e){
+            System.out.println(e.getMessage());
+        }
+    }
+}
+class Program {
+    static int kIt = 0;
+    void base() throws Error {
+        double e = 1e-7;
+        final int kMax = 5000;
+        final int n = 10;
+        double[][] mtrA = generateMatrix(n);
+        double[] initialColumnX = generateInitialColumn(n);
+        double properValue = powerMethod(mtrA, initialColumnX, kMax, e).properValue;
+        double[] properColumn = powerMethod(mtrA, initialColumnX, kMax, e).properColumn;
+        Formatter f;
+        System.out.println("Степенной метод");
+        System.out.println("Матрица А ");
+        for (int i = 0; i < mtrA.length; i++) {
+            f = new Formatter();
+            for (int j = 0; j < mtrA.length; j++) {
+                f.format("%4.0f ", mtrA[i][j]);
+            }
+            System.out.println(f);
+        }
+        System.out.println("Начальное приближение");
+        f = new Formatter();
+        for (int j = 0; j < initialColumnX.length; j++)
+            f.format("%10.0f%n", initialColumnX[j]);
+        System.out.print(f);
+        System.out.println("Номер итерации q, при которой достигнута требуемая точность = " + kIt);
+        System.out.println("Приближенное наибольшее по модулю собственное значение = " + properValue);
+        System.out.print("Соответствующий ему нормированный собственный вектор = ");
+        for (double i : properColumn)
+            System.out.print(i + " ");
+        System.out.println();
+        System.out.print("Вектор невязки = ");
+        double[] discrepancyVector = stmDiscrepancy(mtrA, properColumn, properValue);
+        for (double i : discrepancyVector)
+            System.out.print(i + " ");
+        System.out.println();
+        System.out.println("Норма невязки = " + secondNorm(stmDiscrepancy(mtrA, properColumn, properValue)));
+        kIt = 0;
+        e = 1e-7;
+        System.out.println();
+        ArrayList<MyResult1> lp = jacobiMethod(mtrA.clone(),kMax,e);
+        System.out.println("Метод вращений Якоби");
+        System.out.println("Номер итерации q, при которой достигнута требуемая точность = " + kIt);
+        for (int i=0;i<lp.size();i++)
+            System.out.println(lp.get(i));
+        System.out.println("Векторы невязок:");
+        for (int i=0;i<lp.size();i++)
+            System.out.println( Arrays.toString(stmDiscrepancy(mtrA, lp.get(i).properColumn, lp.get(i).properValue)));
+    }
+
+    //Генерация матрицы
+    double[][] generateMatrix(int n){
+        final int k = 6;
+        double[][] mtrA = new double[n][n];
+        Random rand = new Random();
+        for (int i = 0;i<n; i++)
+            for (int j = 0; j < n; j++) {
+                if (i < j) {
+                    mtrA[i][j] =  -100 +  rand.nextInt(200+1);
+                    mtrA[j][i] = mtrA[i][j];
+                }
+            }
+        for (int i = 0;i<n; i++) {
+            double dTemp = 0.;
+            for (int j = 0; j < n; j++) {
+                dTemp += Math.abs(mtrA[i][j]);
+            }
+            mtrA[i][i] = dTemp + k + rand.nextInt(9*k+1);
+        }
+        return  mtrA;
+    }
+
+
+    double[] generateInitialColumn(int n){
+        Random rand = new Random();
+        double[] initialColumn = new double[n];
+        for(int i = 0;i<n;i++){
+            initialColumn[i] =  -100 +  rand.nextInt(200+1);
+        }
+        return initialColumn;
+    }
+
+
+
+    //Степенной метод
+    MyResult1 powerMethod ( double[][] mtrA,double [] initialColumnX, int kMax, double e){
+        double [] columnX1;
+        double [] columnX2 = initialColumnX.clone();
+        double properValue;
+        int k = 0;
+        do {
+            if (k > kMax)
+                throw new Error("Итерационный процесс расходится");
+            columnX2 = divisionColumn(columnX2, secondNorm(columnX2));
+            columnX1 = columnX2;
+            columnX2 = multiplicationMatrixColumn(mtrA, columnX2);
+            properValue = scalarMultiplication(columnX2, columnX1) / scalarMultiplication(columnX1, columnX1);
+            k++;
+            kIt++;
+        }while (secondNorm(stmDiscrepancy(mtrA,columnX2,properValue))>e);
+        columnX2 = divisionColumn(columnX2, secondNorm(columnX2));
+        return new  MyResult1(properValue,columnX2);
+    }
+    class MyResult1 {
+        public double properValue;
+        public double [] properColumn;
+        public MyResult1(double properValue,double [] properColumn){
+            this.properColumn=properColumn;
+            this.properValue=properValue;
+        }
+
+        @Override
+        public String toString() {
+            return "Собственное значение = " + properValue +
+                    " соответствующий ему нормированный собственный вектор = " + Arrays.toString(properColumn);
+        }
+    }
+    public static void arrayCopy(double[][] aSource, double[][] aDestination) {
+        for (int i = 0; i < aSource.length; i++) {
+            System.arraycopy(aSource[i], 0, aDestination[i], 0, aSource[i].length);
+        }
+    }
+    ArrayList<MyResult1> jacobiMethod(double[][] mtrA, int kMax, double e) {
+        ArrayList<MyResult1> lp= new ArrayList();
+        double[][] mtr = new double[mtrA.length][mtrA.length];
+        arrayCopy(mtrA,mtr);
+        int k = 0;
+        int i = 0;
+        int j = 0;
+        double u = 0;
+        double cos;
+        double sin;
+        double[][] tm = new double[mtr.length][mtr.length];
+        for(int g=0;g<tm.length;g++)
+            tm[g][g]=1;
+        double[][] tTemp = new double[mtr.length][mtr.length];
+        double[][] mtrTemp = new double[mtr.length][mtr.length];
+        while (secondNormND(mtr) > e) {
+            double t = 0.;
+            for(int d =0;d<mtr.length;d++)
+                for (int b = d+1;b<mtr[0].length;b++)
+                    if(Math.abs(mtr[d][b])>t)
+                    {
+                        t= Math.abs(mtr[d][b]);
+                        i=d;
+                        j=b;
+                    }
+            if(mtr[i][i] == mtr[j][j]) {
+                cos = 1 / Math.sqrt(2);
+                sin = cos * (-1.);
+            }
+            else
+            {
+                u = 2*mtr[i][j]/(mtr[i][i]-mtr[j][j]);
+                double v = 1 / (Math.sqrt(1 + u * u));
+                cos = Math.sqrt((1+v)/2);
+                sin = Math.signum(u)*Math.sqrt((1-v)/2);
+            }
+            arrayCopy(mtr,mtrTemp);
+            arrayCopy(tm,tTemp);
+            for(int d =0;d<mtr.length;d++){
+                mtr[d][i]=mtrTemp[d][i]*cos+mtrTemp[d][j]*sin;
+                mtr[d][j]=mtrTemp[d][i]*sin*(-1.)+mtrTemp[d][j]*cos;
+                tm[d][i]=tTemp[d][i]*cos+tTemp[d][j]*sin;
+                tm[d][j]=tTemp[d][i]*sin*(-1.)+tTemp[d][j]*cos;
+            }
+            arrayCopy(mtr,mtrTemp);
+            for(int d =0;d<mtr.length;d++){
+                mtr[i][d]=mtrTemp[i][d]*cos+mtrTemp[j][d]*sin;
+                mtr[j][d]=mtrTemp[i][d]*sin*(-1.)+mtrTemp[j][d]*cos;
+            }
+            k++;
+            kIt++;
+            if (k > kMax)
+                throw new Error("Привышен параметр k max");
+        }
+        for(int d=0;d<mtrA.length;d++) {
+            double[] properColumn = new double[mtrA.length];
+            for(int g=0;g<mtrA.length;g++)
+                properColumn[g]=tm[g][d];
+            lp.add(new MyResult1(mtr[d][d],properColumn));
+        }
+        return  lp;
+    }
+    //Подсчет второй нормы
+    double secondNorm(double []columnX){
+        double dTemp =0.;
+        for (double x : columnX) dTemp += x * x;
+        return Math.sqrt(dTemp);
+    }
+
+    double secondNormND(double [][] mtrA){
+        double dTemp =0.;
+        for(int i =0;i<mtrA.length;i++)
+            for (int j = i+1;j<mtrA[0].length;j++)
+                    dTemp += mtrA[i][j] * mtrA[i][j];
+        return dTemp;
+    }
+    //Подсчет нормы
+
+    //Подсчет скалярного произведение векторов
+    double scalarMultiplication(double []columnX1,double []columnX2){
+        double temp =0.;
+        for (int i = 0;i<columnX1.length;i++){
+            temp += columnX1[i]*columnX2[i];
+        }
+        return temp;
+    }
+
+    double[] divisionColumn(double []columnX1,double x){
+        double[] columnX = columnX1.clone();
+        for (int i = 0;i<columnX1.length;i++){
+            columnX[i] =  columnX[i]/x;
+        }
+        return columnX;
+    }
+
+
+    double[] stmDiscrepancy(double[][] mtrA,double [] columnX, double properValue){
+        double[] r =  multiplicationMatrixColumn(mtrA,columnX);
+        for(int i=0;i<r.length;i++)
+            r[i]= r[i] - columnX[i]*properValue;
+        return r;
+    }
+
+
+    double[] multiplicationMatrixColumn(double[][] mtrA,double[] columnF){
+        double [] columnX = new double[columnF.length];
+        for(int i = 0; i < mtrA.length; i++)
+            for(int j = 0; j < mtrA.length; j++)
+                columnX[i] += columnF[j] * mtrA[i][j];
+        return columnX;
+    }
+    double[][] multiplicationMatrix(double[][] mtrA1,double[][] mtrA2){
+        double [][] newMtr = new double[mtrA1.length][mtrA2.length];
+        for (int i=0; i< mtrA1.length; ++i)
+            for (int j=0; j<mtrA2.length; ++j)
+                for (int k=0; k<mtrA1[0].length; ++k)
+                    newMtr[i][j] += mtrA1[i][k] * mtrA2[k][j];
+        return newMtr;
+    }
+}
